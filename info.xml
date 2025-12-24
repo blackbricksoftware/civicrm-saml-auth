@@ -1,0 +1,55 @@
+<?xml version="1.0"?>
+<extension key="saml_auth" type="module">
+  <file>saml_auth</file>
+  <name>SAML Authentication</name>
+  <description>SAML2-based Single Sign-On for CiviCRM Standalone. Supports Okta and other SAML2 identity providers with SSO enforcement and emergency bypass capability.</description>
+  <license>AGPL-3.0</license>
+  <authors>
+    <author>
+      <name>David Hayes</name>
+      <email>david@blackbrick.software</email>
+      <role>Maintainer</role>
+    </author>
+  </authors>
+  <urls>
+    <url desc="Main Extension Page">https://github.com/blackbricksoftware/civicrm-saml-auth</url>
+    <url desc="Documentation">https://github.com/blackbricksoftware/civicrm-saml-auth</url>
+    <url desc="Support">https://github.com/blackbricksoftware/civicrm-saml-auth/issues</url>
+    <url desc="Licensing">https://www.gnu.org/licenses/agpl-3.0.html</url>
+  </urls>
+  <releaseDate>2025-12-24</releaseDate>
+  <version>1.0.0</version>
+  <develStage>alpha</develStage>
+  <compatibility mode="semver">
+    <comments>Semantic versioning. For example, compatibility with "6.1" implies compatibility with "6.2".</comments>
+    <ver>6.5</ver>
+  </compatibility>
+  <php_compatibility mode="list">
+    <comments>Listed versions. For example, specify both "8.1" and "8.2".</comments>
+    <ver>8.0</ver>
+    <ver>8.1</ver>
+    <ver>8.2</ver>
+    <ver>8.3</ver>
+    <ver>8.4</ver>
+  </php_compatibility>
+  <smarty_compatibility mode="list">
+    <comments>Listed versions. For example, specify both "4" and "5".</comments>
+    <ver>5</ver>
+  </smarty_compatibility>
+  <comments>Provides SAML2-based Single Sign-On authentication with support for multiple identity providers including Okta. Features SSO enforcement mode and emergency bypass mechanism.</comments>
+  <classloader>
+    <psr0 prefix="CRM_" path="."/>
+    <psr4 prefix="Civi\" path="Civi"/>
+  </classloader>
+  <civix>
+    <namespace>CRM/SamlAuth</namespace>
+    <format>25.01.1</format>
+    <angularModule>crmSamlAuth</angularModule>
+  </civix>
+  <mixins>
+    <mixin>mgd-php@1.0.0</mixin>
+    <mixin>setting-php@1.0.0</mixin>
+    <mixin>smarty@1.0.3</mixin>
+    <mixin>menu-xml@1.0.0</mixin>
+  </mixins>
+</extension>
