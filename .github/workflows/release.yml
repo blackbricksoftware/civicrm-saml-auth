@@ -23,7 +23,7 @@ jobs:
 
       - name: Create release zip
         run: |
-          zip -r container_logs.zip . \
+          zip -r saml_auth.zip . \
             -x ".git/*" \
             -x ".github/*" \
             -x ".gitignore"
@@ -31,6 +31,6 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v1
         with:
-          files: container_logs.zip
+          files: saml_auth.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
