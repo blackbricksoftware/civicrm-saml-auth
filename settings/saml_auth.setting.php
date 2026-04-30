@@ -125,7 +125,7 @@ return [
   'saml_auth_match_field' => [
     'name' => 'saml_auth_match_field',
     'type' => 'String',
-    'default' => 'email',
+    'default' => 'username',
     'html_type' => 'select',
     'title' => E::ts('User Match Field'),
     'description' => E::ts('Which CiviCRM User field to match the incoming SAML identity against.'),
