@@ -2,7 +2,7 @@
 <extension key="saml_auth" type="module">
   <file>saml_auth</file>
   <name>SAML Authentication</name>
-  <description>SAML2-based Single Sign-On for CiviCRM Standalone. Supports Okta and other SAML2 identity providers with SSO enforcement and emergency bypass capability.</description>
+  <description>SAML2-based Single Sign-On for CiviCRM Standalone. Supports Okta, Azure AD, Google Workspace, and other SAML2 identity providers.</description>
   <license>AGPL-3.0</license>
   <authors>
     <author>
@@ -17,8 +17,8 @@
     <url desc="Support">https://github.com/blackbricksoftware/civicrm-saml-auth/issues</url>
     <url desc="Licensing">https://www.gnu.org/licenses/agpl-3.0.html</url>
   </urls>
-  <releaseDate>2025-12-24</releaseDate>
-  <version>1.0.0</version>
+  <releaseDate>2026-04-16</releaseDate>
+  <version>2.0.0</version>
   <develStage>alpha</develStage>
   <compatibility mode="semver">
     <comments>Semantic versioning. For example, compatibility with "6.1" implies compatibility with "6.2".</comments>
@@ -36,10 +36,11 @@
     <comments>Listed versions. For example, specify both "4" and "5".</comments>
     <ver>5</ver>
   </smarty_compatibility>
-  <comments>Provides SAML2-based Single Sign-On authentication with support for multiple identity providers including Okta. Features SSO enforcement mode and emergency bypass mechanism.</comments>
+  <comments>v2.0: env-driven configuration via CIVICRM_SAML_AUTH_* variables; SP metadata endpoint; RelayState allowlist; subscriber-pattern hooks. Emergency bypass key removed — set CIVICRM_SAML_AUTH_MODE=disabled and redeploy if you need to fall back to password login.</comments>
   <classloader>
     <psr0 prefix="CRM_" path="."/>
     <psr4 prefix="Civi\" path="Civi"/>
+    <psr4 prefix="BlackBrickSoftware\CiviCRMSamlAuth\" path="src"/>
   </classloader>
   <civix>
     <namespace>CRM/SamlAuth</namespace>

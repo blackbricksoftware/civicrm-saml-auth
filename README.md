@@ -1,170 +1,179 @@
 # SAML Authentication for CiviCRM Standalone
 
-SAML2-based Single Sign-On authentication extension for CiviCRM Standalone. Enables seamless integration with enterprise identity providers like Okta, Azure AD, Google Workspace, and other SAML2-compliant IdPs.
+SAML2 SSO for CiviCRM Standalone. Works with any SAML2 IdP (Okta, Azure AD,
+Google Workspace, Keycloak, …). Designed for containerized deployments:
+every setting can be pinned via an environment variable, in which case the
+UI shows the value as read-only (and secrets as masked).
 
-This extension provides secure SSO authentication with optional enforcement mode that blocks traditional username/password logins, while maintaining an emergency bypass mechanism for disaster recovery scenarios.
+Licensed under [AGPL-3.0](LICENSE.txt).
 
-This is an [extension for CiviCRM](https://docs.civicrm.org/sysadmin/en/latest/customize/extensions/), licensed under [AGPL-3.0](LICENSE.txt).
+## Login modes
 
-## Features
+A single setting — `saml_auth_mode` / `CIVICRM_SAML_AUTH_MODE` — controls
+everything:
 
-- **SAML2 SSO Authentication**: Authenticate users via your existing identity provider
-- **Multiple IdP Support**: Works with Okta, Azure AD, Google Workspace, and other SAML2 providers
-- **SSO Enforcement**: Optionally block traditional logins and require SSO authentication
-- **Emergency Bypass**: Secret key bypass mechanism for emergency access if IdP is unavailable
-- **Auto-Provisioning**: Automatically creates CiviCRM contacts and users from SAML attributes
-- **Debug Mode**: Detailed logging for troubleshooting SAML flows
-- **Secure by Default**: Uses SHA-256 signatures and follows SAML2 security best practices
+| Mode | Password login | SSO button on login page | Auto-redirect to IdP |
+|---|---|---|---|
+| `disabled` | ✅ | ❌ | ❌ |
+| `optional` | ✅ | ✅ | ❌ |
+| `required` | ❌ (hidden) | — | ✅ |
 
-## Requirements
+Both **SP-initiated** (user clicks SSO button, or visits the login page in
+`required` mode) and **IdP-initiated** (IdP POSTs an unsolicited
+SAMLResponse to the ACS) are supported.
 
-- CiviCRM Standalone (6.5+)
-- PHP 8.1+
-- Access to your Identity Provider's SAML2 configuration
-- Composer (for installing dependencies)
+## Endpoints
+
+| Purpose | URL |
+|---|---|
+| ACS (Assertion Consumer Service) | `https://<site>/civicrm/saml/acs` |
+| SP Metadata | `https://<site>/civicrm/saml/metadata` |
+| SP-init initiator | `https://<site>/civicrm/saml/login` |
+| Admin UI | `https://<site>/civicrm/admin/saml` |
+
+Most IdPs can import SP configuration from the metadata URL — no need to
+copy/paste entity IDs, ACS URLs, or SP certs by hand.
 
 ## Installation
 
-1. Download or clone this extension into your CiviCRM extensions directory (`web/ext/`)
-2. Install dependencies:
-   ```bash
-   cd web/ext/saml_auth
-   composer install
-   ```
-3. Enable the extension in CiviCRM:
-   - Navigate to **Administer** > **System Settings** > **Extensions**
-   - Find "SAML Authentication" and click **Enable**
+1. Drop the extension into your `ext/` directory.
+2. `cd ext/saml_auth && composer install` (installs `onelogin/php-saml`).
+3. Enable: `cv en saml_auth` or Administer → System Settings → Extensions.
 
 ## Configuration
 
-### 1. Configure Your Identity Provider
+Every setting has an equivalent environment variable. Env wins over DB, and
+over any value set in the UI. `civicrm.settings.php`'s `$civicrm_setting`
+mandatory layer is equally honoured.
 
-In your IdP (e.g., Okta), create a new SAML application with these settings:
+### Environment variables
 
-- **Single Sign-On URL (ACS URL)**: `https://your-site.org/civicrm/saml/acs`
-- **Audience URI (SP Entity ID)**: `https://your-site.org` (or your custom entity ID)
-- **Name ID Format**: Email Address
-- **Attribute Statements** (optional):
-  - `firstName` → user.firstName
-  - `lastName` → user.lastName
+| Env var | Setting | Notes |
+|---|---|---|
+| `CIVICRM_SAML_AUTH_MODE` | `saml_auth_mode` | `disabled` \| `optional` \| `required` |
+| `CIVICRM_SAML_AUTH_DEBUG` | `saml_auth_debug` | `1`/`0` |
+| `CIVICRM_SAML_AUTH_IDP_ENTITY_ID` | `saml_auth_idp_entity_id` | |
+| `CIVICRM_SAML_AUTH_IDP_SSO_URL` | `saml_auth_idp_sso_url` | |
+| `CIVICRM_SAML_AUTH_IDP_X509_CERT` | `saml_auth_idp_x509_cert` | Body only, no BEGIN/END |
+| `CIVICRM_SAML_AUTH_SP_ENTITY_ID` | `saml_auth_sp_entity_id` | Defaults to base URL |
+| `CIVICRM_SAML_AUTH_SP_X509_CERT` | `saml_auth_sp_x509_cert` | Required if signing AuthnRequests |
+| `CIVICRM_SAML_AUTH_SP_PRIVATE_KEY` | `saml_auth_sp_private_key` | **Secret — set via env, not the UI** |
+| `CIVICRM_SAML_AUTH_SIGN_REQUESTS` | `saml_auth_sign_requests` | Requires SP cert + key |
+| `CIVICRM_SAML_AUTH_MATCH_FIELD` | `saml_auth_match_field` | `username` \| `email` |
+| `CIVICRM_SAML_AUTH_PROVISIONING_ENABLED` | `saml_auth_provisioning_enabled` | |
+| `CIVICRM_SAML_AUTH_ATTR_USERNAME` | `saml_auth_attr_username` | Blank → fall back to NameID |
+| `CIVICRM_SAML_AUTH_ATTR_EMAIL` | `saml_auth_attr_email` | Blank → fall back to NameID |
+| `CIVICRM_SAML_AUTH_ATTR_FIRST_NAME` | `saml_auth_attr_first_name` | Blank → skip |
+| `CIVICRM_SAML_AUTH_ATTR_LAST_NAME` | `saml_auth_attr_last_name` | Blank → skip |
+| `CIVICRM_SAML_AUTH_ATTR_ROLES` | `saml_auth_attr_roles` | Blank → skip role sync |
+| `CIVICRM_SAML_AUTH_RELAYSTATE_ALLOWLIST` | `saml_auth_relaystate_allowlist` | Newline- or comma-separated URL prefixes |
 
-### 2. Configure the Extension in CiviCRM
+### User matching & provisioning
 
-Navigate to **Administer** > **System Settings** > **SAML Authentication**:
+- `match_field=email` (default): the SAML email attribute (or NameID, if no
+  email attribute is configured) is matched against CiviCRM `User.uf_name`.
+- `match_field=username`: the SAML username attribute (or NameID) is
+  matched against `User.username`.
+- If no existing user matches and `provisioning_enabled=1`, a new Contact
+  and User are created. Only the attributes you configure are copied —
+  each `ATTR_*` setting is optional. Leave any blank to skip that field.
 
-**Identity Provider Settings:**
-- **Identity Provider Entity ID**: The Issuer/Entity ID from your IdP
-- **Single Sign-On URL**: The SSO URL from your IdP
-- **Single Logout URL**: (Optional) The SLO URL from your IdP
-- **X.509 Certificate**: Paste the public certificate from your IdP (without `-----BEGIN CERTIFICATE-----` headers)
+### Role sync
 
-**Service Provider Settings:**
-- **Service Provider Entity ID**: Your CiviCRM entity ID (usually your base URL)
+Set `ATTR_ROLES` to the name of the SAML attribute that carries role
+names. On every login, the user's CiviCRM roles are replaced with the set
+returned by the IdP. Role names that don't exist in CiviCRM are logged
+and skipped — they are never auto-created.
 
-**Security Settings:**
-- **Enable SAML Authentication**: Check to enable SSO
-- **Enforce SSO Only**: Check to block traditional username/password logins
-- **Emergency Bypass Key**: Set a secret key for emergency access (e.g., a random 32-character string)
-- **Enable Debug Mode**: Enable for detailed SAML debugging in logs
+### RelayState allowlist
 
-### 3. Test the Configuration
+To prevent open-redirect abuse on the IdP-initiated flow, the ACS will
+only honour `RelayState` values that match (are equal to, or begin with
+`prefix/`) one of the configured URL prefixes. Empty allowlist ⇒
+defaults to just this site's base URL. Anything else ⇒ redirect goes to
+`/civicrm/home`.
 
-1. Log out of CiviCRM
-2. Navigate to the login page - you should see a "Login with SSO" button
-3. Click the button and complete authentication with your IdP
-4. You should be logged into CiviCRM with your account auto-created
+### Emergency fallback (replaces the old bypass key)
 
-## Emergency Bypass
+The old `?bypass=<key>` mechanism is gone — it stored a plaintext secret
+in the DB and bypassed the standard auth flow. To regain password login
+if your IdP is down:
 
-If SSO enforcement is enabled but your IdP is unavailable, you can bypass SSO using the emergency key:
+1. `export CIVICRM_SAML_AUTH_MODE=disabled` in the container environment.
+2. Restart / redeploy.
+3. The password form reappears immediately; password-based auth works
+   with no further configuration change.
 
+## Feature modularity (subscriber pattern)
+
+Hooks are wired in `saml_auth.php`'s `hook_civicrm_container()`. Each
+feature is a single EventSubscriber class under `Civi\SamlAuth\Subscriber\`.
+To disable a feature, comment out its `addSubscriber` line and run
+`cv flush`.
+
+```php
+$container->findDefinition('dispatcher')
+  ->addMethodCall('addSubscriber', [new Definition(LoginFormSubscriber::class, [...])])
+  ->addMethodCall('addSubscriber', [new Definition(SettingsFormSubscriber::class, [...])])
+  ->addMethodCall('addSubscriber', [new Definition(NavigationMenuSubscriber::class)])
+;
 ```
-https://your-site.org/civicrm/user?bypass=YOUR_SECRET_KEY
-```
 
-This will allow you to use traditional username/password login temporarily.
+## Security notes
 
-**Security Note**: Keep your bypass key secret and change it regularly. Never share it in documentation or commit it to version control.
-
-## User Provisioning
-
-When a user authenticates via SAML for the first time:
-
-1. The extension searches for an existing contact with the user's email address
-2. If found, it associates the SAML login with that contact
-3. If not found, it creates a new contact using SAML attributes:
-   - First Name (from `firstName` or givenname claim)
-   - Last Name (from `lastName` or surname claim)
-   - Email Address (from NameID)
-4. A CiviCRM Standalone user account is created and linked to the contact
+1. Always use HTTPS. SAML signatures do not protect against
+   transport-level tampering of the non-signed parts of the message.
+2. Prefer env/`civicrm.settings.php` for the SP private key and IdP cert.
+   DB-stored secrets are readable by anyone with admin SQL access.
+3. Session IDs are regenerated at the moment of SAML login to prevent
+   session fixation.
+4. `authnRequestsSigned` and the published SP metadata's KeyDescriptor
+   are driven by `saml_auth_sign_requests` + the SP cert/key.
+5. Assertions must be signed (`wantAssertionsSigned=TRUE`, non-negotiable).
 
 ## Troubleshooting
 
-### Enable Debug Mode
+1. Set `CIVICRM_SAML_AUTH_DEBUG=1` and watch the CiviCRM log
+   (`cv ev 'return Civi::log()->info("debug check");'` to confirm log
+   path) — every SAML step emits a `SAML:` entry.
+2. `curl -sSf https://<site>/civicrm/saml/metadata | xmllint --noout -` to
+   confirm SP metadata is valid.
+3. If a setting keeps reverting to an old value, check
+   `cv ev 'return Civi::settings()->getMandatory("saml_auth_<key>");'`
+   to see if an env var is overriding it.
 
-1. Go to **Administer** > **System Settings** > **SAML Authentication**
-2. Check "Enable Debug Mode"
-3. Save settings
-4. Check CiviCRM logs for detailed SAML debugging information
+## Single Logout (SLS)
 
-### Common Issues
+Deferred in this release. If you need it, file an issue — the ACS flow
+is the hard part and it's already done.
 
-**"SAML authentication failed"**
-- Verify your IdP Entity ID and SSO URL are correct
-- Ensure the X.509 certificate is properly formatted (no headers/footers)
-- Check that your IdP is sending assertions to the correct ACS URL
-
-**"Invalid email format in SAML response"**
-- Verify your IdP is configured to send email as the NameID
-- Check that NameID Format is set to "Email Address"
-
-**"User redirected back to login page"**
-- Enable debug mode and check logs for specific errors
-- Verify ACS URL in IdP matches your CiviCRM URL exactly
-
-## Security Considerations
-
-1. **Always use HTTPS** in production - SAML requires encrypted transport
-2. **Protect your bypass key** - treat it like a root password
-3. **Review SAML assertions** - ensure your IdP only sends expected attributes
-4. **Monitor authentication logs** - watch for suspicious login patterns
-5. **Rotate certificates** - update IdP certificates before they expire
-
-## Development
-
-Built with:
-- [OneLogin PHP-SAML](https://github.com/SAML-Toolkits/php-saml) - SAML2 library
-- [civix](https://github.com/totten/civix/) - CiviCRM extension development tool
-
-### File Structure
+## File structure
 
 ```
 saml_auth/
-├── CRM/SamlAuth/          # Form controllers and pages
-│   ├── Form/
-│   │   └── Settings.php   # Settings form
-│   └── Page/
-│       ├── Login.php      # Initiates SSO flow
-│       └── Acs.php        # Handles SAML response
-├── src/                   # PSR-4 autoloaded classes
-│   └── SamlService.php    # Core SAML service
-├── settings/              # Extension settings metadata
-├── templates/             # Smarty templates
-├── xml/Menu/              # Menu definitions
-├── composer.json          # PHP dependencies
-├── info.xml               # Extension metadata
-└── saml_auth.php          # Hook implementations
+├── CRM/SamlAuth/
+│   ├── Form/Settings.php         admin UI
+│   ├── Page/Login.php            SP-init initiator
+│   ├── Page/Acs.php              ACS (SP + IdP initiated)
+│   ├── Page/Metadata.php         SP metadata
+│   └── Upgrader.php              v1→v2 setting migration
+├── Civi/SamlAuth/
+│   ├── Service/
+│   │   ├── ConfigProvider.php    env-aware setting reader
+│   │   ├── SamlService.php       auth orchestration
+│   │   ├── UserMatcher.php       username/email lookup
+│   │   └── RelayStateValidator.php
+│   └── Subscriber/
+│       ├── LoginFormSubscriber.php
+│       ├── SettingsFormSubscriber.php
+│       └── NavigationMenuSubscriber.php
+├── settings/saml_auth.setting.php  env-loadable metadata
+├── templates/CRM/SamlAuth/…
+├── xml/Menu/saml_auth.xml
+├── composer.json / info.xml
+└── saml_auth.php                 hook_civicrm_container + civix stubs
 ```
-
-## Support
-
-- **Issues**: https://github.com/blackbricksoftware/civicrm-saml-auth/issues
-- **Documentation**: https://github.com/blackbricksoftware/civicrm-saml-auth
-
-## License
-
-This extension is licensed under [AGPL-3.0](LICENSE.txt).
 
 ## Credits
 
-Developed by [Black Brick Software](https://blackbrick.software) for the CiviCRM community.
+Developed by [Black Brick Software](https://blackbrick.software).

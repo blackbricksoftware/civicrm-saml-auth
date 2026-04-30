@@ -1,13 +1,8 @@
 {
     "name": "blackbricksoftware/civicrm-saml-auth",
-    "description": "SAML2-based Single Sign-On authentication for CiviCRM Standalone. Supports Okta and other SAML2 identity providers with SSO enforcement and emergency bypass.",
+    "description": "SAML2-based Single Sign-On for CiviCRM Standalone with env-driven configuration and subscriber-pattern hooks.",
     "type": "civicrm-ext",
     "license": "AGPL-3.0",
-    "autoload": {
-        "psr-4": {
-            "BlackBrickSoftware\\CiviCRMSamlAuth\\": "src/"
-        }
-    },
     "authors": [
         {
             "name": "David Hayes",

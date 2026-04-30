@@ -3,19 +3,25 @@
   <item>
     <path>civicrm/admin/saml</path>
     <page_callback>CRM_SamlAuth_Form_Settings</page_callback>
-    <title>Settings</title>
+    <title>SAML Authentication Settings</title>
     <access_arguments>administer CiviCRM</access_arguments>
   </item>
   <item>
     <path>civicrm/saml/login</path>
     <page_callback>CRM_SamlAuth_Page_Login</page_callback>
-    <title>Login</title>
+    <title>SAML Login</title>
     <access_arguments>*always allow*</access_arguments>
   </item>
   <item>
     <path>civicrm/saml/acs</path>
     <page_callback>CRM_SamlAuth_Page_Acs</page_callback>
-    <title>Acs</title>
+    <title>SAML ACS</title>
+    <access_arguments>*always allow*</access_arguments>
+  </item>
+  <item>
+    <path>civicrm/saml/metadata</path>
+    <page_callback>CRM_SamlAuth_Page_Metadata</page_callback>
+    <title>SAML SP Metadata</title>
     <access_arguments>*always allow*</access_arguments>
   </item>
 </menu>
