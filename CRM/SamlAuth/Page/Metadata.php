@@ -2,11 +2,17 @@
 declare(strict_types = 1);
 
 use BlackBrickSoftware\CiviCRMSamlAuth\Service\ConfigProvider;
-use BlackBrickSoftware\CiviCRMSamlAuth\Service\SamlService;
 
 /**
  * Publishes SP SAML metadata. Returns 404 when SAML is disabled so the
  * endpoint doesn't leak the fact that the extension is installed.
+ *
+ * Built directly from a Settings instance constructed with
+ * $spValidationOnly=TRUE — the natural workflow is to render SP metadata
+ * BEFORE the IdP is configured (so the SP admin can hand the metadata
+ * URL/XML to the IdP admin), and the standard Auth pathway requires the
+ * IdP block to validate. SP-only mode skips that and lets us serve
+ * metadata even when IdP entity/SSO/cert are blank.
  */
 class CRM_SamlAuth_Page_Metadata extends CRM_Core_Page {
 
@@ -20,8 +26,7 @@ class CRM_SamlAuth_Page_Metadata extends CRM_Core_Page {
     }
 
     try {
-      $auth = \Civi::service(SamlService::class)->createAuth();
-      $settings = $auth->getSettings();
+      $settings = new \OneLogin\Saml2\Settings($config->buildOneLoginSettings(), TRUE);
       $metadata = $settings->getSPMetadata();
       $errors = $settings->validateMetadata($metadata);
       if ($errors) {
