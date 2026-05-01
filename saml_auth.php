@@ -33,6 +33,7 @@ function saml_auth_civicrm_container(ContainerBuilder $container): void {
   $container->findDefinition('dispatcher')
     // Comment any line to disable the feature.
     ->addMethodCall('addSubscriber', [new Definition(\BlackBrickSoftware\CiviCRMSamlAuth\Subscriber\LoginFormSubscriber::class, [new Reference(\BlackBrickSoftware\CiviCRMSamlAuth\Service\ConfigProvider::class)])])
+    ->addMethodCall('addSubscriber', [new Definition(\BlackBrickSoftware\CiviCRMSamlAuth\Subscriber\PasswordAuthBlockSubscriber::class, [new Reference(\BlackBrickSoftware\CiviCRMSamlAuth\Service\ConfigProvider::class)])])
     ->addMethodCall('addSubscriber', [new Definition(\BlackBrickSoftware\CiviCRMSamlAuth\Subscriber\SettingsFormSubscriber::class, [new Reference(\BlackBrickSoftware\CiviCRMSamlAuth\Service\ConfigProvider::class)])])
     ->addMethodCall('addSubscriber', [new Definition(\BlackBrickSoftware\CiviCRMSamlAuth\Subscriber\NavigationMenuSubscriber::class)])
   ;
