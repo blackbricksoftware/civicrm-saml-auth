@@ -65,7 +65,8 @@ mandatory layer is equally honoured.
 | `CIVICRM_SAML_AUTH_ATTR_EMAIL` | `saml_auth_attr_email` | Blank → fall back to NameID |
 | `CIVICRM_SAML_AUTH_ATTR_FIRST_NAME` | `saml_auth_attr_first_name` | Blank → skip |
 | `CIVICRM_SAML_AUTH_ATTR_LAST_NAME` | `saml_auth_attr_last_name` | Blank → skip |
-| `CIVICRM_SAML_AUTH_ATTR_ROLES` | `saml_auth_attr_roles` | Blank → skip role sync |
+| `CIVICRM_SAML_AUTH_ATTR_ROLES` | `saml_auth_attr_roles` | Blank → skip per-login role sync |
+| `CIVICRM_SAML_AUTH_DEFAULT_ROLES` | `saml_auth_default_roles` | Comma/newline-separated role names; applied **only at provision time** |
 | `CIVICRM_SAML_AUTH_RELAYSTATE_ALLOWLIST` | `saml_auth_relaystate_allowlist` | Newline- or comma-separated URL prefixes |
 
 ### User matching & provisioning
@@ -78,12 +79,27 @@ mandatory layer is equally honoured.
   and User are created. Only the attributes you configure are copied —
   each `ATTR_*` setting is optional. Leave any blank to skip that field.
 
-### Role sync
+### Role sync vs. default roles
 
-Set `ATTR_ROLES` to the name of the SAML attribute that carries role
-names. On every login, the user's CiviCRM roles are replaced with the set
-returned by the IdP. Role names that don't exist in CiviCRM are logged
-and skipped — they are never auto-created.
+Two independent knobs cover the two common patterns:
+
+- **IdP-authoritative** — set `ATTR_ROLES` to the SAML attribute that
+  carries role names. On every login the user's CiviCRM roles are wiped
+  and rewritten from the IdP payload. Manual edits in CiviCRM don't
+  survive the next login. Use this when the IdP is the source of truth
+  for who has which role.
+
+- **Default-on-provision** — leave `ATTR_ROLES` blank and set
+  `DEFAULT_ROLES` to one or more role names (comma- or newline-separated).
+  Those roles are applied only when a user is first provisioned via SAML;
+  subsequent logins do not touch role assignments. Admins manage roles
+  inside CiviCRM after that, and the changes stick.
+
+Both settings can be set together, but the IdP-authoritative path will
+overwrite the defaults on the very next login — so it rarely makes sense.
+
+In either case, role names that don't exist in CiviCRM are logged and
+skipped; they are never auto-created.
 
 ### RelayState allowlist
 

@@ -209,6 +209,18 @@ return [
     'is_env_loadable' => TRUE,
     'global_name' => 'CIVICRM_SAML_AUTH_ATTR_ROLES',
   ],
+  'saml_auth_default_roles' => [
+    'name' => 'saml_auth_default_roles',
+    'type' => 'String',
+    'default' => '',
+    'html_type' => 'text',
+    'title' => E::ts('Default Roles for Provisioned Users'),
+    'description' => E::ts('Comma- or newline-separated CiviCRM Role names to assign when a user is first provisioned via SAML. Applied only at provision time — subsequent logins do not touch these roles, so admins can adjust roles in CiviCRM and the changes stick. If the IdP role attribute (above) is also set, the IdP wins on every login and these defaults are quickly overwritten.'),
+    'is_domain' => 1,
+    'is_contact' => 0,
+    'is_env_loadable' => TRUE,
+    'global_name' => 'CIVICRM_SAML_AUTH_DEFAULT_ROLES',
+  ],
   'saml_auth_relaystate_allowlist' => [
     'name' => 'saml_auth_relaystate_allowlist',
     'type' => 'Text',

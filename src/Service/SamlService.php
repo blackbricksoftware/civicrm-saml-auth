@@ -165,7 +165,39 @@ class SamlService {
       'contact_id' => $contact['id'],
       'username' => $username,
     ]);
+
+    $this->assignDefaultRoles((int) $user['id']);
     return (int) $user['id'];
+  }
+
+  /**
+   * Apply saml_auth_default_roles to a freshly-provisioned user. Called only
+   * from provision() — never on subsequent logins, so admins can adjust roles
+   * inside CiviCRM and the changes survive future SSO logins. Roles named in
+   * the setting that don't exist in CiviCRM are logged and skipped (never
+   * auto-created), matching the syncRoles() convention.
+   */
+  private function assignDefaultRoles(int $userId): void {
+    $names = $this->config->defaultRoles();
+    if ($names === []) {
+      return;
+    }
+    $available = \Civi\Api4\Role::get(FALSE)
+      ->addSelect('id', 'name')
+      ->execute()
+      ->indexBy('name');
+
+    foreach ($names as $name) {
+      if (!isset($available[$name])) {
+        $this->config->debug('Default role not found in CiviCRM', ['role' => $name]);
+        continue;
+      }
+      \Civi\Api4\UserRole::create(FALSE)
+        ->addValue('user_id', $userId)
+        ->addValue('role_id', $available[$name]['id'])
+        ->execute();
+      $this->config->debug('Assigned default role', ['user_id' => $userId, 'role' => $name]);
+    }
   }
 
   private function readAttr(array $attrs, string $field): ?string {

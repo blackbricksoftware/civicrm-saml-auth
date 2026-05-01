@@ -46,6 +46,8 @@ class CRM_SamlAuth_Form_Settings extends CRM_Core_Form {
     $this->add('text', 'saml_auth_attr_last_name', E::ts('SAML attribute: last name'), ['size' => 40]);
     $this->add('text', 'saml_auth_attr_roles', E::ts('SAML attribute: roles'),
       ['size' => 40, 'placeholder' => 'roles or groups']);
+    $this->add('text', 'saml_auth_default_roles', E::ts('Default Roles for Provisioned Users'),
+      ['size' => 60, 'placeholder' => 'role-name-1, role-name-2']);
 
     $this->add('textarea', 'saml_auth_relaystate_allowlist', E::ts('RelayState Allowlist'),
       ['rows' => 3, 'cols' => 60, 'placeholder' => 'One URL prefix per line']);
@@ -135,6 +137,7 @@ class CRM_SamlAuth_Form_Settings extends CRM_Core_Form {
       'saml_auth_attr_first_name',
       'saml_auth_attr_last_name',
       'saml_auth_attr_roles',
+      'saml_auth_default_roles',
       'saml_auth_relaystate_allowlist',
     ];
   }

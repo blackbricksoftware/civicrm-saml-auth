@@ -94,7 +94,21 @@ class ConfigProvider {
    * @return string[] URL prefixes. Empty array means "fall back to base URL only".
    */
   public function relayStateAllowlist(): array {
-    $raw = (string) $this->get('saml_auth_relaystate_allowlist');
+    return $this->parseList('saml_auth_relaystate_allowlist');
+  }
+
+  /**
+   * @return string[] CiviCRM Role names to assign at provision time.
+   */
+  public function defaultRoles(): array {
+    return $this->parseList('saml_auth_default_roles');
+  }
+
+  /**
+   * Splits a setting value on commas or whitespace.
+   */
+  private function parseList(string $key): array {
+    $raw = (string) $this->get($key);
     $parts = preg_split('/[\s,]+/', $raw, -1, PREG_SPLIT_NO_EMPTY) ?: [];
     return array_values(array_filter(array_map('trim', $parts)));
   }
