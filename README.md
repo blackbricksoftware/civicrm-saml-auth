@@ -77,6 +77,19 @@ mandatory layer is equally honoured.
 - If no existing user matches and `provisioning_enabled=1`, a new Contact
   and User are created. Only the attributes you configure are copied —
   each `ATTR_*` setting is optional. Leave any blank to skip that field.
+- **Disabled users** (`User.is_active=0`) are explicitly refused with a
+  "CiviCRM User account is disabled" log entry. Re-enable in CiviCRM admin
+  if needed.
+
+### Profile sync on every login
+
+For matched (existing) users, `first_name`, `last_name`, and the primary
+email are re-pulled from the SAML response on every login and written
+back to the Contact. The IdP is authoritative; manual edits to those
+fields in CiviCRM will be overwritten on the next SSO login. Username
+matching (when `match_field=username`) is unaffected — only the
+profile-display fields are synced, so changing email at the IdP does
+not break re-matching.
 
 ### Role sync vs. default roles
 
@@ -108,31 +121,57 @@ only honour `RelayState` values that match (are equal to, or begin with
 defaults to just this site's base URL. Anything else ⇒ redirect goes to
 `/civicrm/home`.
 
-### Emergency fallback (replaces the old bypass key)
+### MODE_REQUIRED hardening
 
-The old `?bypass=<key>` mechanism is gone — it stored a plaintext secret
-in the DB and bypassed the standard auth flow. To regain password login
-if your IdP is down:
+When `mode=required`, the password-login surface is closed off at every
+known entry point. None of the following requires extra config — it
+follows automatically from the mode:
 
-1. `export CIVICRM_SAML_AUTH_MODE=disabled` in the container environment.
-2. Restart / redeploy.
-3. The password form reappears immediately; password-based auth works
-   with no further configuration change.
+- `/civicrm/login` redirects to `/civicrm/saml/login`; the password form
+  never renders.
+- `/civicrm/login/password` (reset) and `/civicrm/mfa/totp-setup` (login
+  flow MFA setup) likewise redirect to `/civicrm/saml/login`.
+- A logged-in user reaching `/civicrm/my-account/password` is sent to
+  `/civicrm/home` with a status message ("password is managed by your
+  single sign-on provider") — no IdP loop.
+- `User.login` API rejects with `loginPrevented` before any password
+  is checked.
+- `User.PasswordReset` API is rejected at the authorize stage (still-
+  valid reset tokens cannot be redeemed for a fresh password).
+
+### Emergency fallback
+
+If your IdP is down and you need password login back, set
+`CIVICRM_SAML_AUTH_MODE=disabled` and redeploy. The password form
+reappears immediately; password auth works with no further
+configuration change.
 
 ## Feature modularity (subscriber pattern)
 
 Hooks are wired in `saml_auth.php`'s `hook_civicrm_container()`. Each
-feature is a single EventSubscriber class under `Civi\SamlAuth\Subscriber\`.
-To disable a feature, comment out its `addSubscriber` line and run
-`cv flush`.
+feature is a single EventSubscriber class under
+`BlackBrickSoftware\CiviCRMSamlAuth\Subscriber\`. To disable a feature,
+comment out its `addSubscriber` line and run `cv flush`.
 
 ```php
+use BlackBrickSoftware\CiviCRMSamlAuth\Subscriber as Sub;
+
 $container->findDefinition('dispatcher')
-  ->addMethodCall('addSubscriber', [new Definition(LoginFormSubscriber::class, [...])])
-  ->addMethodCall('addSubscriber', [new Definition(SettingsFormSubscriber::class, [...])])
-  ->addMethodCall('addSubscriber', [new Definition(NavigationMenuSubscriber::class)])
+  ->addMethodCall('addSubscriber', [new Definition(Sub\LoginFormSubscriber::class, [...])])
+  ->addMethodCall('addSubscriber', [new Definition(Sub\PasswordAuthBlockSubscriber::class, [...])])
+  ->addMethodCall('addSubscriber', [new Definition(Sub\SettingsFormSubscriber::class, [...])])
+  ->addMethodCall('addSubscriber', [new Definition(Sub\NavigationMenuSubscriber::class)])
 ;
 ```
+
+Subscriber summary:
+
+| Class | Purpose |
+|---|---|
+| `LoginFormSubscriber` | Page-level redirects for SP-init mode flips (login page → SSO, MODE_REQUIRED bounces, etc.) |
+| `PasswordAuthBlockSubscriber` | Blocks `User.login`, `User.RequestPasswordResetEmail`, `User.PasswordReset` APIs in `MODE_REQUIRED` |
+| `SettingsFormSubscriber` | Freezes env-managed fields in the admin UI; masks secrets |
+| `NavigationMenuSubscriber` | Adds the "SAML Authentication Settings" link under Administer → System Settings |
 
 ## Security notes
 
@@ -174,26 +213,28 @@ is the hard part and it's already done.
 ```
 saml_auth/
 ├── CRM/SamlAuth/
-│   ├── Form/Settings.php         admin UI
-│   ├── Page/Login.php            SP-init initiator
-│   ├── Page/Acs.php              ACS (SP + IdP initiated)
-│   ├── Page/Metadata.php         SP metadata
-│   └── Upgrader.php              v1→v2 setting migration
-├── Civi/SamlAuth/
+│   ├── Form/Settings.php             admin UI (QuickForm)
+│   ├── Page/Login.php                SP-init initiator
+│   ├── Page/Acs.php                  ACS (SP- and IdP-initiated)
+│   └── Page/Metadata.php             SP metadata endpoint
+├── src/                              PSR-4: BlackBrickSoftware\CiviCRMSamlAuth\
 │   ├── Service/
-│   │   ├── ConfigProvider.php    env-aware setting reader
-│   │   ├── SamlService.php       auth orchestration
-│   │   ├── UserMatcher.php       username/email lookup
+│   │   ├── ConfigProvider.php        env-aware settings reader + logError()
+│   │   ├── SamlService.php           auth orchestration (provision, sync, completeLogin)
+│   │   ├── UserMatcher.php           username/email lookup
 │   │   └── RelayStateValidator.php
 │   └── Subscriber/
 │       ├── LoginFormSubscriber.php
+│       ├── PasswordAuthBlockSubscriber.php
 │       ├── SettingsFormSubscriber.php
 │       └── NavigationMenuSubscriber.php
-├── settings/saml_auth.setting.php  env-loadable metadata
-├── templates/CRM/SamlAuth/…
-├── xml/Menu/saml_auth.xml
-├── composer.json / info.xml
-└── saml_auth.php                 hook_civicrm_container + civix stubs
+├── settings/saml_auth.setting.php    env-loadable setting metadata
+├── templates/CRM/SamlAuth/SsoLoginButton.tpl
+├── xml/Menu/saml_auth.xml            /civicrm/saml/* + /civicrm/admin/saml routes
+├── composer.json                     onelogin/php-saml dep + PSR-4 mapping
+├── info.xml                          extension manifest
+├── saml_auth.civix.php               civix-generated stubs
+└── saml_auth.php                     hook_civicrm_container + civix hooks
 ```
 
 ## Credits

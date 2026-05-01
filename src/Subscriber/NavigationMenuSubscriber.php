@@ -18,7 +18,11 @@ class NavigationMenuSubscriber implements EventSubscriberInterface {
   }
 
   public function onNavigationMenu(GenericHookEvent $event): void {
-    $menu = &$event->menu;
+    // The hook arg is named "params" (see CRM_Utils_Hook::navigationMenu()),
+    // NOT "menu" — earlier versions of this code accessed $event->menu and
+    // got a null reference, so the civix helper was no-op'ing and the SAML
+    // entry never appeared in the admin menu.
+    $menu = &$event->params;
     _saml_auth_civix_insert_navigation_menu($menu, 'Administer/Users and Permissions', [
       'label' => ts('SAML Authentication', ['domain' => 'saml_auth']),
       'name' => 'saml_authentication_settings',
