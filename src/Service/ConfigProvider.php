@@ -63,10 +63,6 @@ class ConfigProvider {
     return $this->readBool('saml_auth_provisioning_enabled');
   }
 
-  public function isDebug(): bool {
-    return $this->readBool('saml_auth_debug');
-  }
-
   /**
    * Boolean coercion tolerant of env-sourced strings.
    */
@@ -129,7 +125,10 @@ class ConfigProvider {
 
     return [
       'strict' => TRUE,
-      'debug' => $this->isDebug(),
+      // Hard-coded off — OneLogin's debug flag only adds an `echo` of XML
+      // schema errors in Utils::validateXML(). Diagnostic content we care
+      // about is already surfaced via $auth->getErrors() / getLastErrorReason().
+      'debug' => FALSE,
       'sp' => [
         'entityId' => ((string) $this->get('saml_auth_sp_entity_id')) ?: $baseUrl,
         'assertionConsumerService' => [
@@ -167,10 +166,21 @@ class ConfigProvider {
     ];
   }
 
-  public function debug(string $message, array $context = []): void {
-    if ($this->isDebug()) {
-      \Civi::log()->debug('SAML: ' . $message, $context);
-    }
+  /**
+   * Log a caught exception at error level and return a short reference
+   * code. The user-facing message includes the code; admins grep
+   * "Ref: <code>" in container logs to find the full exception + stack
+   * trace tied to a user complaint.
+   */
+  public function logError(string $message, \Throwable $e, array $context = []): string {
+    $ref = strtoupper(bin2hex(random_bytes(3)));
+    \Civi::log()->error('SAML: {message} [Ref: {ref}] {error}', [
+      'message' => $message,
+      'ref' => $ref,
+      'error' => $e->getMessage(),
+      'exception' => $e,
+    ] + $context);
+    return $ref;
   }
 
 }

@@ -33,9 +33,10 @@ class CRM_SamlAuth_Page_Metadata extends CRM_Core_Page {
       \CRM_Utils_System::civiExit();
     }
     catch (\Throwable $e) {
+      $ref = $config->logError('Metadata error', $e);
       \CRM_Utils_System::setHttpHeader('Content-Type', 'text/plain; charset=utf-8');
       http_response_code(500);
-      echo 'SAML metadata error: ' . $e->getMessage();
+      printf("SAML metadata error. Please contact an administrator. (Ref: %s)\n", $ref);
       \CRM_Utils_System::civiExit();
     }
   }

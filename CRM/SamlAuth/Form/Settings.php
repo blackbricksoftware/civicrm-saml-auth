@@ -21,7 +21,6 @@ class CRM_SamlAuth_Form_Settings extends CRM_Core_Form {
     $this->assign('metadataUrl', \CRM_Utils_System::url('civicrm/saml/metadata', '', TRUE, NULL, FALSE));
 
     $this->add('select', 'saml_auth_mode', E::ts('SAML Login Mode'), self::getModeOptions(), TRUE);
-    $this->add('checkbox', 'saml_auth_debug', E::ts('Debug Mode'));
 
     $this->add('text', 'saml_auth_idp_entity_id', E::ts('IdP Entity ID'),
       ['size' => 60, 'placeholder' => 'http://www.okta.com/exk1234567890']);
@@ -122,7 +121,6 @@ class CRM_SamlAuth_Form_Settings extends CRM_Core_Form {
   private function getSettingNames(): array {
     return [
       'saml_auth_mode',
-      'saml_auth_debug',
       'saml_auth_idp_entity_id',
       'saml_auth_idp_sso_url',
       'saml_auth_idp_x509_cert',

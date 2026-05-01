@@ -22,7 +22,7 @@ class RelayStateValidator {
 
     $candidate = trim($relayState);
     if (!filter_var($candidate, FILTER_VALIDATE_URL)) {
-      $this->config->debug('RelayState rejected — not a valid URL', ['relay' => $candidate]);
+      \Civi::log()->warning('SAML: RelayState rejected — not a valid URL', ['relay' => $candidate]);
       return NULL;
     }
 
@@ -42,7 +42,7 @@ class RelayStateValidator {
       }
     }
 
-    $this->config->debug('RelayState rejected — not in allowlist', ['relay' => $candidate, 'allow' => $allow]);
+    \Civi::log()->warning('SAML: RelayState rejected — not in allowlist', ['relay' => $candidate, 'allow' => $allow]);
     return NULL;
   }
 

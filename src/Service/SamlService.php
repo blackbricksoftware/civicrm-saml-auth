@@ -52,8 +52,18 @@ class SamlService {
     $identifier = $this->extractIdentifier($samlData);
     $existing = $this->matcher->find($identifier);
     if ($existing) {
-      $this->config->debug('Matched existing user', ['user_id' => $existing['id'], 'identifier' => $identifier]);
+      if (empty($existing['is_active'])) {
+        throw new \RuntimeException(sprintf(
+          'CiviCRM User account is disabled (user_id=%d, username=%s). Contact an administrator to re-enable.',
+          $existing['id'],
+          $existing['username']
+        ));
+      }
+      \Civi::log()->debug('SAML: Matched existing user', ['user_id' => $existing['id'], 'identifier' => $identifier]);
+      $contactId = (int) $existing['contact_id'];
+      $this->syncContact((int) $existing['id'], $contactId, $samlData);
       $this->syncRoles((int) $existing['id'], $samlData);
+      $this->flushNavigationCache($contactId);
       return (int) $existing['id'];
     }
 
@@ -65,7 +75,30 @@ class SamlService {
 
     $userId = $this->provision($identifier, $samlData);
     $this->syncRoles($userId, $samlData);
+    // Look up the contact_id we just created so we can prime its nav cache.
+    $newUser = \Civi\Api4\User::get(FALSE)
+      ->addWhere('id', '=', $userId)
+      ->addSelect('contact_id')
+      ->execute()
+      ->first();
+    if ($newUser) {
+      $this->flushNavigationCache((int) $newUser['contact_id']);
+    }
     return $userId;
+  }
+
+  /**
+   * Bump the per-contact navigation cache key so the rendered admin menu is
+   * rebuilt with the current role set on the very next page render. Without
+   * this, a user whose roles just changed via syncRoles()/assignDefaultRoles()
+   * sees their previous role's menu until something else (cv flush, navigation
+   * write, etc.) invalidates the cache.
+   *
+   * Cheap — one cache write that flips the random key returned from
+   * Navigation::getCacheKey().
+   */
+  private function flushNavigationCache(int $contactId): void {
+    \CRM_Core_BAO_Navigation::resetContactNavigation($contactId);
   }
 
   /**
@@ -78,7 +111,7 @@ class SamlService {
     if (session_status() === PHP_SESSION_ACTIVE) {
       session_regenerate_id(TRUE);
     }
-    \CRM_Core_Session::getInstance()->reset(1);
+    \CRM_Core_Session::singleton()->reset(1);
 
     if (!function_exists('_authx_uf')) {
       throw new \RuntimeException('authx extension is required for SAML login but is not active.');
@@ -86,10 +119,10 @@ class SamlService {
     _authx_uf()->loginSession($userId);
 
     \Civi::dispatcher()->dispatch(
-      new LoginEvent('login_success', $userId),
-      'civi.standalone.login'
+      'civi.standalone.login',
+      new LoginEvent('login_success', $userId)
     );
-    $this->config->debug('Login completed via SAML', ['user_id' => $userId]);
+    \Civi::log()->info('SAML: Login completed', ['user_id' => $userId]);
   }
 
   /**
@@ -133,6 +166,15 @@ class SamlService {
     $username = $matchField === ConfigProvider::MATCH_USERNAME
       ? $identifier
       : ($this->readAttr($attrs, 'username') ?? $this->deriveUsername($email ?: $identifier));
+    $ufName = $email !== '' ? $email : $username;
+
+    // Pre-check both fields on civicrm_uf_match (User) so a unique-key
+    // collision turns into a clear error instead of a raw DB exception
+    // that leaves an orphan Contact behind. Most likely cause in practice:
+    // an admin changed match_field or the username convention after some
+    // users were already provisioned, so the matcher couldn't find them
+    // by the new field but their email still collides.
+    $this->assertNoUserConflict($username, $ufName);
 
     // Contact first — User.contact_id FK needs it to exist.
     $contactCreate = \Civi\Api4\Contact::create(FALSE)
@@ -152,15 +194,30 @@ class SamlService {
     $contact = $contactCreate->execute()->first();
 
     $username = $this->ensureUniqueUsername($username);
-    $user = \Civi\Api4\User::create(FALSE)
-      ->addValue('username', $username)
-      ->addValue('uf_name', $email !== '' ? $email : $username)
-      ->addValue('contact_id', $contact['id'])
-      ->addValue('is_active', TRUE)
-      ->execute()
-      ->first();
+    try {
+      $user = \Civi\Api4\User::create(FALSE)
+        ->addValue('username', $username)
+        ->addValue('uf_name', $ufName)
+        ->addValue('contact_id', $contact['id'])
+        ->addValue('is_active', TRUE)
+        ->execute()
+        ->first();
+    }
+    catch (\Throwable $e) {
+      // Clean up the orphan Contact + Email rows we just created. Anything
+      // beyond the User INSERT failing leaves a dangling person record on
+      // the contact list otherwise.
+      \Civi\Api4\Email::delete(FALSE)
+        ->addWhere('contact_id', '=', $contact['id'])
+        ->execute();
+      \Civi\Api4\Contact::delete(FALSE)
+        ->addWhere('id', '=', $contact['id'])
+        ->setUseTrash(FALSE)
+        ->execute();
+      throw $e;
+    }
 
-    $this->config->debug('Provisioned new user', [
+    \Civi::log()->info('SAML: Provisioned new user', [
       'user_id' => $user['id'],
       'contact_id' => $contact['id'],
       'username' => $username,
@@ -189,15 +246,82 @@ class SamlService {
 
     foreach ($names as $name) {
       if (!isset($available[$name])) {
-        $this->config->debug('Default role not found in CiviCRM', ['role' => $name]);
+        \Civi::log()->warning('SAML: Default role not found in CiviCRM', ['role' => $name]);
         continue;
       }
       \Civi\Api4\UserRole::create(FALSE)
         ->addValue('user_id', $userId)
         ->addValue('role_id', $available[$name]['id'])
         ->execute();
-      $this->config->debug('Assigned default role', ['user_id' => $userId, 'role' => $name]);
+      \Civi::log()->debug('SAML: Assigned default role', ['user_id' => $userId, 'role' => $name]);
     }
+  }
+
+  /**
+   * Update an existing user's Contact (first/last name) and primary email
+   * from the SAML assertion. Treats the IdP as authoritative — local edits
+   * inside CiviCRM are overwritten on every login. Skip silently if the
+   * relevant ATTR_* setting is blank or the response carries no value.
+   *
+   * Match runs on username (nickname), so it's safe to update the email
+   * here without breaking subsequent logins for this same user.
+   */
+  private function syncContact(int $userId, int $contactId, array $samlData): void {
+    $attrs = $samlData['attributes'];
+    $firstName = $this->readAttr($attrs, 'first_name');
+    $lastName = $this->readAttr($attrs, 'last_name');
+
+    $update = \Civi\Api4\Contact::update(FALSE)->addWhere('id', '=', $contactId);
+    $touched = [];
+    if ($firstName !== NULL) {
+      $update->addValue('first_name', $firstName);
+      $touched['first_name'] = $firstName;
+    }
+    if ($lastName !== NULL) {
+      $update->addValue('last_name', $lastName);
+      $touched['last_name'] = $lastName;
+    }
+    if ($touched !== []) {
+      $update->execute();
+      \Civi::log()->debug('SAML: Synced Contact name from SAML', ['contact_id' => $contactId] + $touched);
+    }
+
+    // Email: prefer match-field identifier when matching by email; otherwise
+    // fall through the email attribute. Same precedence as provision().
+    $email = $this->config->matchField() === ConfigProvider::MATCH_EMAIL
+      ? $this->extractIdentifier($samlData)
+      : ($this->readAttr($attrs, 'email') ?? '');
+    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+      return;
+    }
+
+    $primary = \Civi\Api4\Email::get(FALSE)
+      ->addWhere('contact_id', '=', $contactId)
+      ->addWhere('is_primary', '=', TRUE)
+      ->addSelect('id', 'email')
+      ->execute()
+      ->first();
+    if (!$primary) {
+      \Civi\Api4\Email::create(FALSE)
+        ->addValue('contact_id', $contactId)
+        ->addValue('email', $email)
+        ->addValue('is_primary', TRUE)
+        ->execute();
+      \Civi::log()->debug('SAML: Created primary email from SAML', ['contact_id' => $contactId, 'email' => $email]);
+    }
+    elseif ($primary['email'] !== $email) {
+      \Civi\Api4\Email::update(FALSE)
+        ->addWhere('id', '=', $primary['id'])
+        ->addValue('email', $email)
+        ->execute();
+      \Civi::log()->debug('SAML: Synced primary email from SAML', ['contact_id' => $contactId, 'old' => $primary['email'], 'new' => $email]);
+    }
+
+    // Keep User.uf_name aligned to the email (matches provision()'s convention).
+    \Civi\Api4\User::update(FALSE)
+      ->addWhere('id', '=', $userId)
+      ->addValue('uf_name', $email)
+      ->execute();
   }
 
   private function readAttr(array $attrs, string $field): ?string {
@@ -236,6 +360,33 @@ class SamlService {
       ->count() > 0;
   }
 
+  /**
+   * Refuse to provision when the proposed (username, uf_name) already exists
+   * in civicrm_uf_match in any combination — that means the matcher should
+   * have found this person but didn't (mismatched match_field, stale data,
+   * etc.). Failing fast with a clear message beats a DB unique-key error.
+   */
+  private function assertNoUserConflict(string $username, string $ufName): void {
+    $conflict = \Civi\Api4\User::get(FALSE)
+      ->addClause('OR', ['username', '=', $username], ['uf_name', '=', $ufName])
+      ->addSelect('id', 'username', 'uf_name', 'is_active')
+      ->setLimit(1)
+      ->execute()
+      ->first();
+    if ($conflict) {
+      throw new \RuntimeException(sprintf(
+        'Cannot provision SAML user — a CiviCRM User row already exists with username="%s" or uf_name="%s" (existing user_id=%d, username=%s, uf_name=%s, is_active=%s). The current saml_auth_match_field setting did not find this user. Either align the existing User\'s "%s" field to the SAML identity, change saml_auth_match_field, or remove the existing user.',
+        $username,
+        $ufName,
+        $conflict['id'],
+        $conflict['username'],
+        $conflict['uf_name'],
+        $conflict['is_active'] ? 'true' : 'false',
+        $this->config->matchField() === ConfigProvider::MATCH_USERNAME ? 'username' : 'uf_name'
+      ));
+    }
+  }
+
   private function syncRoles(int $userId, array $samlData): void {
     $attrName = $this->config->attr('roles');
     if ($attrName === NULL) {
@@ -243,7 +394,7 @@ class SamlService {
     }
     $raw = $samlData['attributes'][$attrName] ?? NULL;
     if ($raw === NULL) {
-      $this->config->debug('Role attribute missing from response', ['attr' => $attrName]);
+      \Civi::log()->debug('SAML: Role attribute missing from response', ['attr' => $attrName]);
       return;
     }
     $samlRoles = array_map(static fn($v) => trim((string) $v), is_array($raw) ? $raw : [$raw]);
@@ -260,7 +411,7 @@ class SamlService {
 
     foreach ($samlRoles as $name) {
       if (!isset($availableRoles[$name])) {
-        $this->config->debug('SAML role not found in CiviCRM', ['role' => $name]);
+        \Civi::log()->warning('SAML: IdP role not found in CiviCRM', ['role' => $name]);
         continue;
       }
       \Civi\Api4\UserRole::create(FALSE)

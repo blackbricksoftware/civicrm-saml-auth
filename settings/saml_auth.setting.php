@@ -26,18 +26,6 @@ return [
       'callback' => ['CRM_SamlAuth_Form_Settings', 'getModeOptions'],
     ],
   ],
-  'saml_auth_debug' => [
-    'name' => 'saml_auth_debug',
-    'type' => 'Boolean',
-    'default' => FALSE,
-    'html_type' => 'checkbox',
-    'title' => E::ts('Debug Mode'),
-    'description' => E::ts('Enable detailed SAML debugging to the CiviCRM log.'),
-    'is_domain' => 1,
-    'is_contact' => 0,
-    'is_env_loadable' => TRUE,
-    'global_name' => 'CIVICRM_SAML_AUTH_DEBUG',
-  ],
   'saml_auth_idp_entity_id' => [
     'name' => 'saml_auth_idp_entity_id',
     'type' => 'String',

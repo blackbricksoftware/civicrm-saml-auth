@@ -17,9 +17,9 @@
     <url desc="Support">https://github.com/blackbricksoftware/civicrm-saml-auth/issues</url>
     <url desc="Licensing">https://www.gnu.org/licenses/agpl-3.0.html</url>
   </urls>
-  <releaseDate>2026-04-30</releaseDate>
-  <version>0.1.1</version>
-  <develStage>alpha</develStage>
+  <releaseDate>2026-05-01</releaseDate>
+  <version>0.2.0</version>
+  <develStage>beta</develStage>
   <compatibility mode="semver">
     <comments>Semantic versioning. For example, compatibility with "6.1" implies compatibility with "6.2".</comments>
     <ver>6.5</ver>

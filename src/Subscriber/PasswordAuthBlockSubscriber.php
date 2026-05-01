@@ -47,7 +47,7 @@ class PasswordAuthBlockSubscriber implements EventSubscriberInterface {
       return;
     }
     $event->stopReason = 'loginPrevented';
-    $this->config->debug('Password auth blocked by SAML required-mode', [
+    \Civi::log()->info('SAML: Password auth blocked by required-mode', [
       'stage' => $event->stage,
       'userID' => $event->userID,
     ]);
@@ -65,7 +65,7 @@ class PasswordAuthBlockSubscriber implements EventSubscriberInterface {
     if ($entity !== 'User' || strcasecmp((string) $action, 'PasswordReset') !== 0) {
       return;
     }
-    $this->config->debug('User.PasswordReset blocked by SAML required-mode');
+    \Civi::log()->info('SAML: User.PasswordReset blocked by required-mode');
     $event->setAuthorized(FALSE);
     $event->stopPropagation();
   }

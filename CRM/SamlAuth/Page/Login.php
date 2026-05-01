@@ -21,8 +21,16 @@ class CRM_SamlAuth_Page_Login extends CRM_Core_Page {
         throw new \RuntimeException('SAML authentication is not enabled.');
       }
 
-      $relayState = isset($_GET['return']) ? (string) $_GET['return'] : NULL;
-      $config->debug('Initiating SP-init SAML login', ['relay' => $relayState]);
+      // OneLogin's Auth::login() defaults RelayState to getSelfRoutedURLNoQuery()
+      // when $relayState is null/empty — i.e. the URL of THIS page, /civicrm/saml/login.
+      // That would loop the user right back through SAML on every successful login.
+      // We pass our default return URL explicitly so RelayState is always something
+      // sensible. Caller-supplied ?return= still wins, and the ACS validates the
+      // RelayState against the allowlist before honoring it.
+      $relayState = isset($_GET['return']) && $_GET['return'] !== ''
+        ? (string) $_GET['return']
+        : $config->defaultReturnUrl();
+      \Civi::log()->debug('SAML: Initiating SP-init SAML login', ['relay' => $relayState]);
 
       $service = \Civi::service(SamlService::class);
       $auth = $service->createAuth();
@@ -31,8 +39,11 @@ class CRM_SamlAuth_Page_Login extends CRM_Core_Page {
       \CRM_Utils_System::civiExit();
     }
     catch (\Throwable $e) {
-      $config->debug('SAML login error', ['error' => $e->getMessage()]);
-      \CRM_Core_Error::statusBounce('SAML login failed: ' . $e->getMessage());
+      $ref = $config->logError('SP-init login error', $e);
+      \CRM_Core_Error::statusBounce(sprintf(
+        'SAML login failed. Please contact an administrator. (Ref: %s)',
+        $ref
+      ));
     }
   }
 

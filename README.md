@@ -51,7 +51,6 @@ mandatory layer is equally honoured.
 | Env var | Setting | Notes |
 |---|---|---|
 | `CIVICRM_SAML_AUTH_MODE` | `saml_auth_mode` | `disabled` \| `optional` \| `required` |
-| `CIVICRM_SAML_AUTH_DEBUG` | `saml_auth_debug` | `1`/`0` |
 | `CIVICRM_SAML_AUTH_IDP_ENTITY_ID` | `saml_auth_idp_entity_id` | |
 | `CIVICRM_SAML_AUTH_IDP_SSO_URL` | `saml_auth_idp_sso_url` | |
 | `CIVICRM_SAML_AUTH_IDP_X509_CERT` | `saml_auth_idp_x509_cert` | Body only, no BEGIN/END |
@@ -149,12 +148,19 @@ $container->findDefinition('dispatcher')
 
 ## Troubleshooting
 
-1. Set `CIVICRM_SAML_AUTH_DEBUG=1` and watch the CiviCRM log
-   (`cv ev 'return Civi::log()->info("debug check");'` to confirm log
-   path) — every SAML step emits a `SAML:` entry.
-2. `curl -sSf https://<site>/civicrm/saml/metadata | xmllint --noout -` to
+1. Tail the CiviCRM logs — every SAML step emits a `SAML:` entry. Routine
+   flow events log at `debug`/`info`, security-adjacent events
+   (RelayState rejection, missing role mapping) at `warning`, and caught
+   exceptions at `error`. Whether the lower-severity entries are written
+   depends on the host's CiviCRM logger configuration.
+2. User-facing failures render as
+   `SAML <stage> failed. Please contact an administrator. (Ref: ABCDEF)`.
+   Grep `Ref: ABCDEF` in logs to find the matching error entry — full
+   exception detail and stack trace are attached via Monolog's `exception`
+   context key.
+3. `curl -sSf https://<site>/civicrm/saml/metadata | xmllint --noout -` to
    confirm SP metadata is valid.
-3. If a setting keeps reverting to an old value, check
+4. If a setting keeps reverting to an old value, check
    `cv ev 'return Civi::settings()->getMandatory("saml_auth_<key>");'`
    to see if an env var is overriding it.
 

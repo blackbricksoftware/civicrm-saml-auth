@@ -96,14 +96,14 @@ class LoginFormSubscriber implements EventSubscriberInterface {
         ts('SSO Enabled'),
         'info'
       );
-      $this->config->debug('SAML required — redirecting authenticated user away from password self-service', ['from' => get_class($page)]);
-      \CRM_Utils_System::redirect(\CRM_Utils_System::url('civicrm', '', TRUE, NULL, FALSE));
+      \Civi::log()->debug('SAML: Required mode — redirecting authenticated user away from password self-service', ['from' => get_class($page)]);
+      \CRM_Utils_System::redirect(\CRM_Utils_System::url('civicrm/home', '', TRUE, NULL, FALSE));
       return;
     }
 
     // Anonymous-flow page → SSO entrypoint.
     $samlLoginUrl = \CRM_Utils_System::url('civicrm/saml/login', '', TRUE, NULL, FALSE);
-    $this->config->debug('SAML required — redirecting to IdP', ['from' => get_class($page)]);
+    \Civi::log()->debug('SAML: Required mode — redirecting to IdP', ['from' => get_class($page)]);
     \CRM_Utils_System::redirect($samlLoginUrl);
   }
 

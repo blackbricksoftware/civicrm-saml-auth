@@ -23,9 +23,9 @@ class CRM_SamlAuth_Page_Acs extends CRM_Core_Page {
       $service = \Civi::service(SamlService::class);
       $auth = $service->createAuth();
 
-      $config->debug('Processing SAML response');
+      \Civi::log()->debug('SAML: Processing SAML response');
       $samlData = $service->processResponse($auth);
-      $config->debug('SAML response valid', ['nameId' => $samlData['nameId']]);
+      \Civi::log()->debug('SAML: SAML response valid', ['nameId' => $samlData['nameId']]);
 
       $userId = $service->findOrProvisionUser($samlData);
       $service->completeLogin($userId);
@@ -37,8 +37,11 @@ class CRM_SamlAuth_Page_Acs extends CRM_Core_Page {
       \CRM_Utils_System::redirect($target);
     }
     catch (\Throwable $e) {
-      $config->debug('SAML ACS error', ['error' => $e->getMessage()]);
-      \CRM_Core_Error::statusBounce('SAML authentication failed: ' . $e->getMessage());
+      $ref = $config->logError('ACS error', $e);
+      \CRM_Core_Error::statusBounce(sprintf(
+        'SAML authentication failed. Please contact an administrator. (Ref: %s)',
+        $ref
+      ));
     }
   }
 
