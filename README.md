@@ -60,8 +60,8 @@ mandatory layer is equally honoured.
 | `CIVICRM_SAML_AUTH_SIGN_REQUESTS` | `saml_auth_sign_requests` | Requires SP cert + key |
 | `CIVICRM_SAML_AUTH_MATCH_FIELD` | `saml_auth_match_field` | `username` \| `email` |
 | `CIVICRM_SAML_AUTH_PROVISIONING_ENABLED` | `saml_auth_provisioning_enabled` | |
-| `CIVICRM_SAML_AUTH_ATTR_USERNAME` | `saml_auth_attr_username` | Blank → fall back to NameID |
-| `CIVICRM_SAML_AUTH_ATTR_EMAIL` | `saml_auth_attr_email` | Blank → fall back to NameID |
+| `CIVICRM_SAML_AUTH_ATTR_USERNAME` | `saml_auth_attr_username` | Blank → use the assertion `<NameID>` |
+| `CIVICRM_SAML_AUTH_ATTR_EMAIL` | `saml_auth_attr_email` | Blank → use the assertion `<NameID>` |
 | `CIVICRM_SAML_AUTH_ATTR_FIRST_NAME` | `saml_auth_attr_first_name` | Blank → skip |
 | `CIVICRM_SAML_AUTH_ATTR_LAST_NAME` | `saml_auth_attr_last_name` | Blank → skip |
 | `CIVICRM_SAML_AUTH_ATTR_ROLES` | `saml_auth_attr_roles` | Blank → skip per-login role sync |
@@ -70,16 +70,48 @@ mandatory layer is equally honoured.
 
 ### User matching & provisioning
 
-- `match_field=email` (default): the SAML email attribute (or NameID, if no
-  email attribute is configured) is matched against CiviCRM `User.uf_name`.
-- `match_field=username`: the SAML username attribute (or NameID) is
-  matched against `User.username`.
-- If no existing user matches and `provisioning_enabled=1`, a new Contact
-  and User are created. Only the attributes you configure are copied —
-  each `ATTR_*` setting is optional. Leave any blank to skip that field.
-- **Disabled users** (`User.is_active=0`) are explicitly refused with a
-  "CiviCRM User account is disabled" log entry. Re-enable in CiviCRM admin
-  if needed.
+The matcher needs one stable string from the assertion to look up the
+CiviCRM User. Two approaches, both fully supported:
+
+**1. Use the SAML `<NameID>` (canonical, recommended where possible)**
+
+`<NameID>` is the SAML-standard subject identifier — purpose-built for
+"who this assertion is about." Leave the relevant `ATTR_*` setting
+blank and the matcher reads NameID:
+
+```bash
+# match by username, NameID is something like 'dhayes' or 'dhayes@lalgbtcenter.org'
+CIVICRM_SAML_AUTH_MATCH_FIELD=username
+CIVICRM_SAML_AUTH_ATTR_USERNAME=     # blank → uses <NameID>
+
+# OR match by email, NameID is the user's email
+CIVICRM_SAML_AUTH_MATCH_FIELD=email
+CIVICRM_SAML_AUTH_ATTR_EMAIL=        # blank → uses <NameID>
+```
+
+**2. Use a named SAML attribute**
+
+If your IdP doesn't put the right value in NameID (e.g. it's an opaque
+internal user ID rather than a human-readable identifier), point at a
+named attribute:
+
+```bash
+CIVICRM_SAML_AUTH_MATCH_FIELD=username
+CIVICRM_SAML_AUTH_ATTR_USERNAME=login                      # named attr
+# or with namespaced names:
+CIVICRM_SAML_AUTH_ATTR_USERNAME=http://schemas.auth0.com/nickname
+```
+
+**Provisioning**
+
+If no existing User matches and `provisioning_enabled=1`, a new Contact
+and User are created. Only the attributes you configure (`ATTR_FIRST_NAME`,
+`ATTR_LAST_NAME`, `ATTR_EMAIL`) are copied — each is optional, leave
+blank to skip that field.
+
+**Disabled users** (`User.is_active=0`) are explicitly refused with a
+"CiviCRM User account is disabled" log entry. Re-enable in CiviCRM
+admin if needed.
 
 ### Profile sync on every login
 
